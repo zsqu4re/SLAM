@@ -25,13 +25,13 @@ class SensorModel:
         """
         self.occupancy_map = occupancy_map
         self.map_resolution = 10
-        self._z_hit = 1
+        self._z_hit = 0.8
         self._z_short = 0.1
         self._z_max = 0.1
         self._z_rand = 100
 
         self._sigma_hit = 50
-        self._lambda_short = 0.1
+        self._lambda_short = 0.2
 
         # Used in p_max and p_rand, optionally in ray casting
         self._max_range = 1000
@@ -49,18 +49,18 @@ class SensorModel:
         param[in] x_t1 : particle state belief [x, y, theta] at time t [world_frame]
         param[out] prob_zt1 : likelihood of a range scan zt1 at time t
         """
-        x, y, theta = x_t1  # Extract particle state
-        prob_zt1 = 1.0  # Initialize likelihood
+        x, y, theta = x_t1 
+        prob_zt1 = 1.0  
 
-        step_size = 5  # Step size for ray tracing in cm
+        step_size = 5  
         max_steps = int(self._max_range / step_size)
 
-        for i in range(len(z_t1_arr)):  # Iterate over each beam
-            z_k = z_t1_arr[i]  # Observed sensor reading
-            angle = theta + np.deg2rad(i - 90)  # Convert index to global angle
+        for i in range(len(z_t1_arr)): 
+            z_k = z_t1_arr[i]  
+            angle = theta + np.deg2rad(i - 90)  
 
-            # Compute expected measurement using inline ray tracing
-            z_star_k = self._max_range  # Start with max range
+           
+            z_star_k = self._max_range  
             for step in range(max_steps):
                 x_curr = x + step * step_size * np.cos(angle)
                 y_curr = y + step * step_size * np.sin(angle)
@@ -69,10 +69,10 @@ class SensorModel:
                 map_x, map_y = int(x_curr / self.map_resolution), int(y_curr / self.map_resolution)
                 if 0 <= map_x < self.occupancy_map.shape[1] and 0 <= map_y < self.occupancy_map.shape[0]:
                     if self.occupancy_map[map_y, map_x] > self._min_probability:
-                        z_star_k = step * step_size  # Stop at first occupied cell
+                        z_star_k = step * step_size 
                         break
                 else:
-                    break  # If out of bounds, stop
+                    break  
 
             # Compute probability components
             p_hit = norm.pdf(z_k, loc=z_star_k, scale=self._sigma_hit) if z_k <= self._max_range else 0

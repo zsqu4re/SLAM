@@ -103,8 +103,8 @@ if __name__ == '__main__':
     Initialize Parameters
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument('--path_to_map', default=r'C:\Users\zsqu4re\Desktop\SLAM\SLAM\SLAM\HW1_ParticleFilter\problem_set\data\map\wean.dat')
-    parser.add_argument('--path_to_log', default=r'C:\Users\zsqu4re\Desktop\SLAM\SLAM\SLAM\HW1_ParticleFilter\problem_set\data\log\robotdata1.log')
+    parser.add_argument('--path_to_map', default=r'C:\Users\zsqu4\Desktop\SLAM\HW1_ParticleFilter\problem_set\data\map\wean.dat')
+    parser.add_argument('--path_to_log', default=r'C:\Users\zsqu4\Desktop\SLAM\HW1_ParticleFilter\problem_set\data\log\robotdata1.log')
     parser.add_argument('--output', default='results')
     parser.add_argument('--num_particles', default=500, type=int)
     parser.add_argument('--visualize', action='store_true')
