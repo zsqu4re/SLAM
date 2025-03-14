@@ -86,6 +86,8 @@ def warp2pi(angle_rad):
     \param angle_rad Input angle in radius
     \return angle_rad_warped Warped angle to [-\pi, \pi].
     """
+
+    angle_rad = (angle_rad + np.pi) % (2 * np.pi) - np.pi
     return angle_rad
 
 
@@ -103,9 +105,17 @@ def init_landmarks(init_measure, init_measure_cov, init_pose, init_pose_cov):
     '''
 
     k = init_measure.shape[0] // 2
-
+    
     landmark = np.zeros((2 * k, 1))
     landmark_cov = np.zeros((2 * k, 2 * k))
+    for i in range(k):
+        beta = init_measure[2 * i]
+        l = init_measure[2 * i + 1]
+        landmark[2 * i] = init_pose[0] + l * np.cos(init_pose[2] + beta)
+        landmark[2 * i + 1] = init_pose[1] + l * np.sin(init_pose[2] + beta)
+
+        landmark_cov[2 * i:2 * i + 2, 2 * i:2 * i + 2] = init_pose_cov[:2, :2] + init_measure_cov
+
 
     return k, landmark, landmark_cov
 
@@ -122,6 +132,24 @@ def predict(X, P, control, control_cov, k):
     \return X_pre Predicted X state of shape (3 + 2k, 1).
     \return P_pre Predicted P covariance of shape (3 + 2k, 3 + 2k).
     '''
+    d = control[0]
+    alpha = control[1]
+    theta = X[2]
+    
+    X_pre = np.zeros((3 + 2 * k, 1))
+    X_pre[0] = X[0] + d * np.cos(theta + alpha)
+    X_pre[1] = X[1] + d * np.sin(theta + alpha)
+    X_pre[2] = X[2] + alpha
+
+    for i in range(k):
+        X_pre[3 + 2 * i] = X[3 + 2 * i]
+        X_pre[3 + 2 * i + 1] = X[3 + 2 * i + 1]
+
+    P_pre = np.zeros((3 + 2 * k, 3 + 2 * k))
+    P_pre[0:3, 0:3] = P[0:3, 0:3] + control_cov
+    P_pre[0:3, 3:] = P[0:3, 3:]
+    P_pre[3:, 0:3] = P[3:, 0:3]
+    P_pre[3:, 3:] = P[3:, 3:]
 
     return X, P
 
@@ -138,6 +166,50 @@ def update(X_pre, P_pre, measure, measure_cov, k):
     \return X Updated X state of shape (3 + 2k, 1).
     \return P Updated P covariance of shape (3 + 2k, 3 + 2k).
     '''
+    beta = measure[0::2]
+    l = measure[1::2]
+
+    X = np.zeros((3 + 2 * k, 1))
+    P = np.zeros((3 + 2 * k, 3 + 2 * k))
+
+    for i in range(k):
+        beta_i = beta[i]
+        l_i = l[i]
+        x_i = X_pre[3 + 2 * i]
+        y_i = X_pre[3 + 2 * i + 1]
+        x = X_pre[0]
+        y = X_pre[1]
+        theta = X_pre[2]
+
+        delta_x = x_i - x
+        delta_y = y_i - y
+        q = delta_x**2 + delta_y**2
+        sqrt_q = np.sqrt(q)
+        beta_hat = np.arctan2(delta_y, delta_x) - theta
+        l_hat = sqrt_q
+
+        H = np.zeros((2, 3 + 2 * k))
+        H[0, 0] = -1 * (delta_y / q)
+        H[0, 1] = delta_x / q
+        H[0, 2] = -1 * (delta_x * delta_y) / sqrt_q
+        H[1, 0] = delta_x / sqrt_q
+        H[1, 1] = delta_y / sqrt_q
+        H[1, 2] = -1 * (delta_y**2) / q
+        H[0, 3 + 2 * i] = 1
+        H[1, 3 + 2 * i] = -1
+        H[0, 3 + 2 * i + 1] = 0
+        H[1, 3 + 2 * i + 1] = 0
+
+        z_hat = np.array([[beta_hat], [l_hat]])
+        z = np.array([[beta_i], [l_i]])
+
+        S = H @ P_pre @ H.T + measure_cov
+        K = P_pre @ H.T @ np.linalg.inv(S)
+        nu = z - z_hat
+        nu[0, 0] = warp2pi(nu[0, 0])  # Ensure nu[0] is wrapped to [-pi, pi]
+        nu = np.reshape(nu, (-1, 1))  # Ensure nu is a column vector
+        X = X_pre + K @ nu
+        P = P_pre - K @ S @ K.T
 
     return X_pre, P_pre
 
@@ -157,6 +229,16 @@ def evaluate(X, P, k):
     plt.draw()
     plt.waitforbuttonpress(0)
 
+    for i in range(k):
+        l_i = l_true[2 * i:2 * i + 2]
+        l_i_hat = X[3 + 2 * i:3 + 2 * i + 2]
+        d = np.linalg.norm(l_i - l_i_hat)
+        print(f"Euclidean distance of landmark {i} is {d}")
+
+        P_i = P[3 + 2 * i:3 + 2 * i + 2, 3 + 2 * i:3 + 2 * i + 2]
+        d = np.sqrt((l_i - l_i_hat).T @ np.linalg.inv(P_i) @ (l_i - l_i_hat))
+        print(f"Mahalanobis distance of landmark {i} is {d}")
+
 
 def main():
     # TEST: Setup uncertainty parameters
@@ -175,7 +257,9 @@ def main():
     sig_r2 = sig_r**2
 
     # Open data file and read the initial measurements
-    data_file = open("../data/data.txt")
+    # data_file = open("../data/data.txt")
+    data_file = open("C:/Users/zsqu4/Desktop/SLAM/HW2_EKF/problem_set/data/data.txt")
+
     line = data_file.readline()
     fields = re.split('[\t ]', line)[:-1]
     arr = np.array([float(field) for field in fields])
